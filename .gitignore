@@ -1,0 +1,4 @@
+/target
+.agent-memory
+.DS_Store
+*.tmp
