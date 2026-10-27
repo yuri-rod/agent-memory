@@ -1,8 +1,9 @@
 [package]
 name = "agent-memory"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2021"
 description = "Local SQLite project memory for coding agents, with a CLI and MCP server"
+repository = "https://github.com/yuri-rod/agent-memory"
 license = "MIT"
 
 [dependencies]
