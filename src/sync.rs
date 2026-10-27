@@ -1,7 +1,7 @@
+use crate::db::MemoryDb;
 use std::fs;
 use std::io;
 use std::path::Path;
-use crate::db::MemoryDb;
 
 pub fn sync_from_markdown(workspace: &Path, db: &mut MemoryDb) -> io::Result<usize> {
     let memory_md = workspace.join("MEMORY.md");
@@ -30,14 +30,17 @@ pub fn sync_from_markdown(workspace: &Path, db: &mut MemoryDb) -> io::Result<usi
             continue;
         }
 
-        if trimmed.starts_with('-') || trimmed.starts_with('*') || trimmed.starts_with('•') {
-            let item_text = trimmed[1..].trim();
+        if let Some(item_text) = trimmed.strip_prefix(['-', '*', '•']) {
+            let item_text = item_text.trim();
             if item_text.is_empty() {
                 continue;
             }
 
             let (key, val) = if let Some(colon_pos) = item_text.find(':') {
-                let k = item_text[..colon_pos].trim().replace("**", "").replace('`', "");
+                let k = item_text[..colon_pos]
+                    .trim()
+                    .replace("**", "")
+                    .replace('`', "");
                 let v = item_text[colon_pos + 1..].trim().to_string();
                 (k, v)
             } else {
@@ -45,7 +48,8 @@ pub fn sync_from_markdown(workspace: &Path, db: &mut MemoryDb) -> io::Result<usi
                 (k, item_text.to_string())
             };
 
-            let _ = db.save_memory(&current_category, &key, &val, &[], true);
+            db.save_memory(&current_category, &key, &val, &[], true)
+                .map_err(io::Error::other)?;
             count += 1;
         }
     }
@@ -54,9 +58,7 @@ pub fn sync_from_markdown(workspace: &Path, db: &mut MemoryDb) -> io::Result<usi
 }
 
 pub fn export_to_markdown(workspace: &Path, db: &MemoryDb) -> io::Result<()> {
-    let Ok(items) = db.list_all(None) else {
-        return Ok(());
-    };
+    let items = db.list_all(None).map_err(io::Error::other)?;
 
     let mut md = String::from("# Project Memory Ledger\n\n");
 

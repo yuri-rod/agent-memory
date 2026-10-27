@@ -2,7 +2,7 @@
 name = "agent-memory"
 version = "0.1.0"
 edition = "2021"
-description = "Universal, local-first cross-session memory and architectural decision ledger for coding agents"
+description = "Local SQLite project memory for coding agents, with a CLI and MCP server"
 license = "MIT"
 
 [dependencies]

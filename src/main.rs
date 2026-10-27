@@ -11,7 +11,7 @@ use agent_memory::mcp::run_mcp_server;
 use agent_memory::sync::{export_to_markdown, sync_from_markdown};
 
 #[derive(Parser)]
-#[command(name = "agent-memory", version, about = "Universal cross-session memory and architectural decision ledger for coding agents")]
+#[command(name = "agent-memory", version, about = "Local project memory for coding agents")]
 struct Cli {
     #[arg(short = 'C', long = "directory", global = true, help = "Workspace directory")]
     directory: Option<PathBuf>,
@@ -33,7 +33,7 @@ enum Commands {
         #[arg(help = "Memory description content")]
         content: String,
 
-        #[arg(long = "unpinned", help = "Do not auto-inject into session context header")]
+        #[arg(long = "unpinned", help = "Keep this entry out of the context header")]
         unpinned: bool,
 
         #[arg(short = 't', long = "tags", help = "Comma-separated search tags")]
@@ -55,7 +55,7 @@ enum Commands {
         category: Option<String>,
     },
 
-    #[command(about = "Output compact XML context header for prompt injection")]
+    #[command(about = "Output pinned memories and recent summaries for prompt context")]
     Header,
 
     #[command(about = "Delete a memory by key or ID")]
@@ -185,6 +185,7 @@ fn main() -> io::Result<()> {
         }
 
         Commands::Mcp => {
+            env::set_current_dir(&workspace)?;
             run_mcp_server()?;
         }
 

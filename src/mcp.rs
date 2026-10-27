@@ -78,7 +78,7 @@ fn handle_request(req: &JsonRpcRequest, db: &mut MemoryDb) -> Option<Value> {
                                 "category": { "type": "string", "enum": ["decision", "convention", "gotcha", "focus", "context"], "description": "Memory category" },
                                 "key": { "type": "string", "description": "Unique key identifier (e.g. auth_protocol, commit_format)" },
                                 "content": { "type": "string", "description": "The exact decision or convention text" },
-                                "pinned": { "type": "boolean", "description": "If true, will be automatically injected into every future session context header" },
+                                "pinned": { "type": "boolean", "description": "If true, include this entry when the context header is requested" },
                                 "tags": { "type": "array", "items": { "type": "string" }, "description": "Optional search tags" }
                             },
                             "required": ["category", "key", "content"]
@@ -97,7 +97,7 @@ fn handle_request(req: &JsonRpcRequest, db: &mut MemoryDb) -> Option<Value> {
                     },
                     {
                         "name": "get_context_header",
-                        "description": "Retrieve the compact XML context header of all pinned conventions and architectural decisions",
+                        "description": "Retrieve pinned conventions, decisions and recent session summaries",
                         "inputSchema": {
                             "type": "object",
                             "properties": {}

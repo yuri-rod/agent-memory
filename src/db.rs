@@ -1,8 +1,8 @@
-use std::fs;
-use std::path::{Path, PathBuf};
 use chrono::Utc;
 use rusqlite::{params, Connection, Result};
 use serde::{Deserialize, Serialize};
+use std::fs;
+use std::path::{Path, PathBuf};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MemoryItem {
@@ -80,7 +80,7 @@ impl MemoryDb {
         let tags_str = tags.join(",");
         let pinned_int = if pinned { 1 } else { 0 };
 
-        self.conn.execute(
+        self.conn.query_row(
             "INSERT INTO memories (category, key, content, tags, created_at, updated_at, pinned)
              VALUES (?1, ?2, ?3, ?4, ?5, ?5, ?6)
              ON CONFLICT(key) DO UPDATE SET
@@ -88,11 +88,11 @@ impl MemoryDb {
                 content = excluded.content,
                 tags = excluded.tags,
                 updated_at = excluded.updated_at,
-                pinned = excluded.pinned",
+                pinned = excluded.pinned
+             RETURNING id",
             params![category, key, content, tags_str, now, pinned_int],
-        )?;
-
-        Ok(self.conn.last_insert_rowid())
+            |row| row.get(0),
+        )
     }
 
     pub fn get_pinned(&self) -> Result<Vec<MemoryItem>> {
@@ -152,9 +152,11 @@ impl MemoryDb {
 
     pub fn delete_memory(&mut self, id_or_key: &str) -> Result<usize> {
         if let Ok(id) = id_or_key.parse::<i64>() {
-            self.conn.execute("DELETE FROM memories WHERE id = ?1", params![id])
+            self.conn
+                .execute("DELETE FROM memories WHERE id = ?1", params![id])
         } else {
-            self.conn.execute("DELETE FROM memories WHERE key = ?1", params![id_or_key])
+            self.conn
+                .execute("DELETE FROM memories WHERE key = ?1", params![id_or_key])
         }
     }
 
