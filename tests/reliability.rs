@@ -127,3 +127,24 @@ fn updating_a_memory_returns_its_original_id() {
     assert_eq!(db.list_all(None).unwrap().len(), 2);
     assert_eq!(db.search("storage").unwrap()[0].content, "Bundled SQLite");
 }
+
+#[test]
+fn row_conversion_errors_are_not_silently_dropped() {
+    let workspace = TempDir::new().unwrap();
+    let mut db = MemoryDb::open(workspace.path()).unwrap();
+    db.save_memory("decision", "broken", "synthetic entry", &[], true)
+        .unwrap();
+    db.record_session("test", "synthetic session", &[]).unwrap();
+
+    let conn = Connection::open(&db.db_path).unwrap();
+    conn.execute_batch(
+        "UPDATE memories SET tags = x'80'; UPDATE sessions SET files_touched = x'80';",
+    )
+    .unwrap();
+
+    assert!(db.get_pinned().is_err());
+    assert!(db.list_all(None).is_err());
+    assert!(db.list_all(Some("decision")).is_err());
+    assert!(db.search("broken").is_err());
+    assert!(db.get_recent_sessions(2).is_err());
+}

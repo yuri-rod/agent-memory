@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.1.2 - 2026-10-28
+
+- Collect SQLite query results with the standard iterator API, preserving row order
+  and error propagation while removing five repeated loops.
+- Cover malformed stored values across pinned, filtered, search and session queries.
+
 ## 0.1.1 - 2026-10-27
 
 - Use the explicitly selected or discovered project workspace for MCP storage.

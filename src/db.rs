@@ -102,11 +102,7 @@ impl MemoryDb {
         )?;
 
         let rows = stmt.query_map([], map_row_to_memory)?;
-        let mut items = Vec::new();
-        for r in rows {
-            items.push(r?);
-        }
-        Ok(items)
+        rows.collect()
     }
 
     pub fn list_all(&self, category_filter: Option<&str>) -> Result<Vec<MemoryItem>> {
@@ -115,21 +111,13 @@ impl MemoryDb {
                 "SELECT id, category, key, content, tags, created_at, updated_at, pinned FROM memories WHERE category = ?1 ORDER BY pinned DESC, updated_at DESC",
             )?;
             let rows = stmt.query_map(params![cat], map_row_to_memory)?;
-            let mut items = Vec::new();
-            for r in rows {
-                items.push(r?);
-            }
-            Ok(items)
+            rows.collect()
         } else {
             let mut stmt = self.conn.prepare(
                 "SELECT id, category, key, content, tags, created_at, updated_at, pinned FROM memories ORDER BY pinned DESC, category, updated_at DESC",
             )?;
             let rows = stmt.query_map([], map_row_to_memory)?;
-            let mut items = Vec::new();
-            for r in rows {
-                items.push(r?);
-            }
-            Ok(items)
+            rows.collect()
         }
     }
 
@@ -143,11 +131,7 @@ impl MemoryDb {
         )?;
 
         let rows = stmt.query_map(params![pattern], map_row_to_memory)?;
-        let mut items = Vec::new();
-        for r in rows {
-            items.push(r?);
-        }
-        Ok(items)
+        rows.collect()
     }
 
     pub fn delete_memory(&mut self, id_or_key: &str) -> Result<usize> {
@@ -201,11 +185,7 @@ impl MemoryDb {
             })
         })?;
 
-        let mut items = Vec::new();
-        for r in rows {
-            items.push(r?);
-        }
-        Ok(items)
+        rows.collect()
     }
 }
 
