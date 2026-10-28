@@ -97,13 +97,13 @@ fn main() -> io::Result<()> {
 
     match cli.command {
         Commands::Remember { category, key, content, unpinned, tags } => {
-            let mut db = MemoryDb::open(&workspace).map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
+            let mut db = MemoryDb::open(&workspace).map_err(io::Error::other)?;
             let tags_vec: Vec<String> = tags
                 .map(|t| t.split(',').map(|s| s.trim().to_string()).collect())
                 .unwrap_or_default();
 
             db.save_memory(&category, &key, &content, &tags_vec, !unpinned)
-                .map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
+                .map_err(io::Error::other)?;
 
             println!(
                 "{} Saved memory [{}]: {} -> {}{}",
@@ -116,11 +116,11 @@ fn main() -> io::Result<()> {
         }
 
         Commands::Recall { query, category } => {
-            let db = MemoryDb::open(&workspace).map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
+            let db = MemoryDb::open(&workspace).map_err(io::Error::other)?;
             let items = if let Some(q) = query {
-                db.search(&q).map_err(|e| io::Error::new(io::ErrorKind::Other, e))?
+                db.search(&q).map_err(io::Error::other)?
             } else {
-                db.list_all(category.as_deref()).map_err(|e| io::Error::new(io::ErrorKind::Other, e))?
+                db.list_all(category.as_deref()).map_err(io::Error::other)?
             };
 
             if items.is_empty() {
@@ -137,8 +137,8 @@ fn main() -> io::Result<()> {
         }
 
         Commands::List { category } => {
-            let db = MemoryDb::open(&workspace).map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
-            let items = db.list_all(category.as_deref()).map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
+            let db = MemoryDb::open(&workspace).map_err(io::Error::other)?;
+            let items = db.list_all(category.as_deref()).map_err(io::Error::other)?;
 
             if items.is_empty() {
                 println!("No memories recorded in this workspace.");
@@ -154,7 +154,7 @@ fn main() -> io::Result<()> {
         }
 
         Commands::Header => {
-            let db = MemoryDb::open(&workspace).map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
+            let db = MemoryDb::open(&workspace).map_err(io::Error::other)?;
             let header = generate_context_header(&db);
             if !header.is_empty() {
                 print!("{}", header);
@@ -164,8 +164,8 @@ fn main() -> io::Result<()> {
         }
 
         Commands::Forget { target } => {
-            let mut db = MemoryDb::open(&workspace).map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
-            let count = db.delete_memory(&target).map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
+            let mut db = MemoryDb::open(&workspace).map_err(io::Error::other)?;
+            let count = db.delete_memory(&target).map_err(io::Error::other)?;
             if count > 0 {
                 println!("{} Removed memory '{}'", "✓".green().bold(), target);
             } else {
@@ -174,7 +174,7 @@ fn main() -> io::Result<()> {
         }
 
         Commands::Sync { export } => {
-            let mut db = MemoryDb::open(&workspace).map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
+            let mut db = MemoryDb::open(&workspace).map_err(io::Error::other)?;
             if export {
                 export_to_markdown(&workspace, &db)?;
                 println!("{} Exported memories to MEMORY.md", "✓".green().bold());

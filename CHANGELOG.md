@@ -4,6 +4,7 @@
 
 - Collect SQLite query results with the standard iterator API, preserving row order
   and error propagation while removing five repeated loops.
+- Use the standard I/O error constructor throughout CLI and MCP database calls.
 - Cover malformed stored values across pinned, filtered, search and session queries.
 
 ## 0.1.1 - 2026-10-27

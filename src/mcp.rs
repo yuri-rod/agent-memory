@@ -20,7 +20,7 @@ pub fn run_mcp_server() -> io::Result<()> {
     let mut stdout = io::stdout();
 
     let workspace = env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
-    let mut db = MemoryDb::open(&workspace).map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
+    let mut db = MemoryDb::open(&workspace).map_err(io::Error::other)?;
 
     for line in stdin.lock().lines() {
         let line = line?;
