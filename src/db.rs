@@ -6,6 +6,14 @@ use std::path::{Path, PathBuf};
 
 pub const MAX_KEY_BYTES: usize = 256;
 pub const MAX_CONTENT_BYTES: usize = 64 * 1024; // 64 KiB
+pub const MAX_CATEGORY_BYTES: usize = 64;
+pub const MAX_TAG_BYTES: usize = 64;
+pub const MAX_TAGS_COUNT: usize = 20;
+
+pub const MAX_AGENT_NAME_BYTES: usize = 128;
+pub const MAX_SUMMARY_BYTES: usize = 4096;
+pub const MAX_FILES_TOUCHED_COUNT: usize = 50;
+pub const MAX_FILE_PATH_BYTES: usize = 256;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MemoryItem {
@@ -26,6 +34,26 @@ fn default_provenance() -> String {
 }
 
 pub fn validate_memory_input(key: &str, content: &str) -> std::result::Result<(), String> {
+    validate_memory_full_input("decision", key, content, &[])
+}
+
+pub fn validate_memory_full_input(
+    category: &str,
+    key: &str,
+    content: &str,
+    tags: &[String],
+) -> std::result::Result<(), String> {
+    let cat_trimmed = category.trim();
+    if cat_trimmed.is_empty() || category.len() > MAX_CATEGORY_BYTES {
+        return Err(format!(
+            "Memory category cannot be empty and must not exceed {} bytes",
+            MAX_CATEGORY_BYTES
+        ));
+    }
+    if category.chars().any(|c| c == '\n' || c == '\r' || c.is_control()) {
+        return Err("Memory category contains invalid control characters".to_string());
+    }
+
     let key_trimmed = key.trim();
     if key_trimmed.is_empty() {
         return Err("Memory key cannot be empty or whitespace only".to_string());
@@ -46,6 +74,64 @@ pub fn validate_memory_input(key: &str, content: &str) -> std::result::Result<()
             MAX_CONTENT_BYTES,
             content.len()
         ));
+    }
+    if tags.len() > MAX_TAGS_COUNT {
+        return Err(format!("Tags count exceeds maximum of {}", MAX_TAGS_COUNT));
+    }
+    for tag in tags {
+        if tag.len() > MAX_TAG_BYTES || tag.chars().any(|c| c == '\n' || c == '\r' || c.is_control()) {
+            return Err("Tag exceeds maximum size of 64 bytes or contains control characters".to_string());
+        }
+    }
+    Ok(())
+}
+
+pub fn validate_session_input(
+    agent_name: &str,
+    summary: &str,
+    files: &[String],
+) -> std::result::Result<(), String> {
+    let name_trimmed = agent_name.trim();
+    if name_trimmed.is_empty() {
+        return Err("Agent name cannot be empty".to_string());
+    }
+    if agent_name.len() > MAX_AGENT_NAME_BYTES {
+        return Err(format!(
+            "Agent name exceeds maximum size of {} bytes",
+            MAX_AGENT_NAME_BYTES
+        ));
+    }
+    if agent_name.chars().any(|c| c == '\n' || c == '\r' || c.is_control()) {
+        return Err("Agent name contains invalid control characters".to_string());
+    }
+
+    let summary_trimmed = summary.trim();
+    if summary_trimmed.is_empty() {
+        return Err("Session summary cannot be empty".to_string());
+    }
+    if summary.len() > MAX_SUMMARY_BYTES {
+        return Err(format!(
+            "Session summary exceeds maximum size of {} bytes",
+            MAX_SUMMARY_BYTES
+        ));
+    }
+
+    if files.len() > MAX_FILES_TOUCHED_COUNT {
+        return Err(format!(
+            "Files touched count exceeds maximum of {}",
+            MAX_FILES_TOUCHED_COUNT
+        ));
+    }
+    for file in files {
+        if file.len() > MAX_FILE_PATH_BYTES {
+            return Err(format!(
+                "File path exceeds maximum size of {} bytes",
+                MAX_FILE_PATH_BYTES
+            ));
+        }
+        if file.chars().any(|c| c == '\n' || c == '\r' || c.is_control()) {
+            return Err("File path contains invalid control characters".to_string());
+        }
     }
     Ok(())
 }
@@ -132,7 +218,7 @@ impl MemoryDb {
         pinned: bool,
         provenance: &str,
     ) -> Result<i64> {
-        if let Err(e) = validate_memory_input(key, content) {
+        if let Err(e) = validate_memory_full_input(category, key, content, tags) {
             return Err(rusqlite::Error::ToSqlConversionFailure(Box::new(std::io::Error::new(
                 std::io::ErrorKind::InvalidInput,
                 e,
@@ -214,6 +300,13 @@ impl MemoryDb {
         summary: &str,
         files: &[String],
     ) -> Result<i64> {
+        if let Err(e) = validate_session_input(agent_name, summary, files) {
+            return Err(rusqlite::Error::ToSqlConversionFailure(Box::new(std::io::Error::new(
+                std::io::ErrorKind::InvalidInput,
+                e,
+            ))));
+        }
+
         let now = Utc::now().to_rfc3339();
         let files_str = files.join(",");
 

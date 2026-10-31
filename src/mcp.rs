@@ -15,28 +15,95 @@ struct JsonRpcRequest {
     params: Option<Value>,
 }
 
+pub const MAX_JSONRPC_FRAME_BYTES: usize = 256 * 1024; // 256 KiB transport limit
+
+pub fn read_bounded_line<R: BufRead>(reader: &mut R, max_bytes: usize) -> io::Result<Option<String>> {
+    let mut buf = Vec::new();
+    loop {
+        let available = match reader.fill_buf() {
+            Ok(n) => n,
+            Err(e) if e.kind() == io::ErrorKind::Interrupted => continue,
+            Err(e) => return Err(e),
+        };
+        if available.is_empty() {
+            if buf.is_empty() {
+                return Ok(None);
+            }
+            break;
+        }
+        if let Some(pos) = available.iter().position(|&b| b == b'\n') {
+            let consume_len = pos + 1;
+            if buf.len() + pos > max_bytes {
+                reader.consume(consume_len);
+                return Err(io::Error::new(
+                    io::ErrorKind::InvalidData,
+                    format!("JSON-RPC request exceeds maximum frame size of {} bytes", max_bytes),
+                ));
+            }
+            buf.extend_from_slice(&available[..pos]);
+            reader.consume(consume_len);
+            break;
+        } else {
+            let len = available.len();
+            if buf.len() + len > max_bytes {
+                reader.consume(len);
+                return Err(io::Error::new(
+                    io::ErrorKind::InvalidData,
+                    format!("JSON-RPC request exceeds maximum frame size of {} bytes", max_bytes),
+                ));
+            }
+            buf.extend_from_slice(available);
+            reader.consume(len);
+        }
+    }
+    if buf.last() == Some(&b'\r') {
+        buf.pop();
+    }
+    let s = String::from_utf8(buf).map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
+    Ok(Some(s))
+}
+
 pub fn run_mcp_server() -> io::Result<()> {
     let stdin = io::stdin();
+    let mut reader = io::BufReader::new(stdin.lock());
     let mut stdout = io::stdout();
 
     let workspace = env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
     let mut db = MemoryDb::open(&workspace).map_err(io::Error::other)?;
 
-    for line in stdin.lock().lines() {
-        let line = line?;
-        if line.trim().is_empty() {
-            continue;
-        }
+    loop {
+        match read_bounded_line(&mut reader, MAX_JSONRPC_FRAME_BYTES) {
+            Ok(Some(line)) => {
+                if line.trim().is_empty() {
+                    continue;
+                }
 
-        let Ok(req) = serde_json::from_str::<JsonRpcRequest>(&line) else {
-            continue;
-        };
+                let Ok(req) = serde_json::from_str::<JsonRpcRequest>(&line) else {
+                    continue;
+                };
 
-        let response = handle_request(&req, &mut db);
-        if let Some(resp) = response {
-            let resp_str = serde_json::to_string(&resp)?;
-            writeln!(stdout, "{}", resp_str)?;
-            stdout.flush()?;
+                let response = handle_request(&req, &mut db);
+                if let Some(resp) = response {
+                    let resp_str = serde_json::to_string(&resp)?;
+                    writeln!(stdout, "{}", resp_str)?;
+                    stdout.flush()?;
+                }
+            }
+            Ok(None) => break,
+            Err(e) if e.kind() == io::ErrorKind::InvalidData => {
+                let err_resp = json!({
+                    "jsonrpc": "2.0",
+                    "id": Value::Null,
+                    "error": {
+                        "code": -32600,
+                        "message": format!("Invalid request: {}", e)
+                    }
+                });
+                let resp_str = serde_json::to_string(&err_resp)?;
+                writeln!(stdout, "{}", resp_str)?;
+                stdout.flush()?;
+            }
+            Err(e) => return Err(e),
         }
     }
 

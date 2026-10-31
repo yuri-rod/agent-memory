@@ -150,3 +150,47 @@ fn test_legacy_database_schema_migration() {
     let new_item = new_items.iter().find(|i| i.key == "new_rule").unwrap();
     assert_eq!(new_item.provenance, "agent");
 }
+
+#[test]
+fn test_session_summary_input_validation() {
+    use agent_memory::db::{
+        validate_session_input, MAX_AGENT_NAME_BYTES, MAX_FILES_TOUCHED_COUNT, MAX_FILE_PATH_BYTES,
+        MAX_SUMMARY_BYTES,
+    };
+
+    assert!(validate_session_input("", "Valid summary", &[]).is_err());
+    assert!(validate_session_input("agent\nname", "Valid summary", &[]).is_err());
+    let long_name = "a".repeat(MAX_AGENT_NAME_BYTES + 1);
+    assert!(validate_session_input(&long_name, "Valid summary", &[]).is_err());
+
+    assert!(validate_session_input("valid_agent", "", &[]).is_err());
+    let long_summary = "s".repeat(MAX_SUMMARY_BYTES + 1);
+    assert!(validate_session_input("valid_agent", &long_summary, &[]).is_err());
+
+    let too_many_files: Vec<String> = (0..MAX_FILES_TOUCHED_COUNT + 1)
+        .map(|i| format!("file_{}.rs", i))
+        .collect();
+    assert!(validate_session_input("valid_agent", "Summary", &too_many_files).is_err());
+
+    let long_path = vec!["p".repeat(MAX_FILE_PATH_BYTES + 1)];
+    assert!(validate_session_input("valid_agent", "Summary", &long_path).is_err());
+
+    let normal_files = vec!["src/lib.rs".to_string(), "tests/safety.rs".to_string()];
+    assert!(validate_session_input("valid_agent", "Summary", &normal_files).is_ok());
+}
+
+#[test]
+fn test_mcp_transport_level_frame_size_bound() {
+    use agent_memory::mcp::read_bounded_line;
+    use std::io::Cursor;
+
+    let normal_payload = b"{\"jsonrpc\": \"2.0\", \"method\": \"ping\"}\n";
+    let mut cursor = Cursor::new(normal_payload);
+    let read_res = read_bounded_line(&mut cursor, 1024).unwrap();
+    assert_eq!(read_res, Some("{\"jsonrpc\": \"2.0\", \"method\": \"ping\"}".to_string()));
+
+    let oversized_payload = vec![b'x'; 2000];
+    let mut cursor_oversized = Cursor::new(oversized_payload);
+    let err = read_bounded_line(&mut cursor_oversized, 500);
+    assert!(err.is_err());
+}
