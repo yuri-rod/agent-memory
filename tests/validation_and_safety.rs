@@ -194,3 +194,30 @@ fn test_mcp_transport_level_frame_size_bound() {
     let err = read_bounded_line(&mut cursor_oversized, 500);
     assert!(err.is_err());
 }
+
+#[test]
+fn test_mcp_oversized_line_drains_until_newline_preventing_desync() {
+    use agent_memory::mcp::read_bounded_line;
+    use std::io::Cursor;
+
+    let max_bytes = 100;
+    // An oversized line (> 100 bytes) containing a valid-looking JSON payload before the newline
+    let mut payload = vec![b'a'; 150];
+    payload.extend_from_slice(b"{\"jsonrpc\": \"2.0\", \"method\": \"embedded_spoof\"}\n");
+    // Followed by a separate legitimate request on the next line
+    payload.extend_from_slice(b"{\"jsonrpc\": \"2.0\", \"method\": \"legitimate_request\"}\n");
+
+    let mut cursor = Cursor::new(payload);
+
+    // The first line must fail due to exceeding max_bytes
+    let first_res = read_bounded_line(&mut cursor, max_bytes);
+    assert!(first_res.is_err());
+
+    // The next read must NOT consume the embedded spoof as a fresh line.
+    // It must read the legitimate subsequent request directly.
+    let second_res = read_bounded_line(&mut cursor, max_bytes).unwrap();
+    assert_eq!(
+        second_res,
+        Some("{\"jsonrpc\": \"2.0\", \"method\": \"legitimate_request\"}".to_string())
+    );
+}

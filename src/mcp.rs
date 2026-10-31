@@ -17,6 +17,25 @@ struct JsonRpcRequest {
 
 pub const MAX_JSONRPC_FRAME_BYTES: usize = 256 * 1024; // 256 KiB transport limit
 
+fn drain_until_newline<R: BufRead>(reader: &mut R) -> io::Result<()> {
+    loop {
+        let available = match reader.fill_buf() {
+            Ok(n) => n,
+            Err(e) if e.kind() == io::ErrorKind::Interrupted => continue,
+            Err(e) => return Err(e),
+        };
+        if available.is_empty() {
+            return Ok(());
+        }
+        if let Some(pos) = available.iter().position(|&b| b == b'\n') {
+            reader.consume(pos + 1);
+            return Ok(());
+        }
+        let len = available.len();
+        reader.consume(len);
+    }
+}
+
 pub fn read_bounded_line<R: BufRead>(reader: &mut R, max_bytes: usize) -> io::Result<Option<String>> {
     let mut buf = Vec::new();
     loop {
@@ -47,6 +66,7 @@ pub fn read_bounded_line<R: BufRead>(reader: &mut R, max_bytes: usize) -> io::Re
             let len = available.len();
             if buf.len() + len > max_bytes {
                 reader.consume(len);
+                let _ = drain_until_newline(reader);
                 return Err(io::Error::new(
                     io::ErrorKind::InvalidData,
                     format!("JSON-RPC request exceeds maximum frame size of {} bytes", max_bytes),
