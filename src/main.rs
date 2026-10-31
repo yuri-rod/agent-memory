@@ -102,7 +102,7 @@ fn main() -> io::Result<()> {
                 .map(|t| t.split(',').map(|s| s.trim().to_string()).collect())
                 .unwrap_or_default();
 
-            db.save_memory(&category, &key, &content, &tags_vec, !unpinned)
+            db.save_memory_with_provenance(&category, &key, &content, &tags_vec, !unpinned, "manual")
                 .map_err(io::Error::other)?;
 
             println!(
