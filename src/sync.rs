@@ -48,7 +48,7 @@ pub fn sync_from_markdown(workspace: &Path, db: &mut MemoryDb) -> io::Result<usi
                 (k, item_text.to_string())
             };
 
-            db.save_memory(&current_category, &key, &val, &[], true)
+            db.save_memory_with_provenance(&current_category, &key, &val, &[], true, "import")
                 .map_err(io::Error::other)?;
             count += 1;
         }

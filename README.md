@@ -88,16 +88,16 @@ Configure a local stdio server in your client with the absolute binary path and 
 }
 ```
 
-The server exposes `save_memory`, `recall_memory`, `get_context_header` and `record_session_summary`. Ask the client to call `get_context_header` when beginning work, and save only reviewed decisions or summaries. The server does not scan agent conversation files or use a hosted inference service. It assumes a trusted local client, has no request-size limit and does not enforce every declared argument constraint. Saved text appears in the header without XML escaping.
+The server exposes `save_memory`, `recall_memory`, `get_context_header` and `record_session_summary`. Ask the client to call `get_context_header` when beginning work, and save only reviewed decisions or summaries. The server does not scan agent conversation files or use a hosted inference service. Payload sizes are bounded to 256 bytes for keys and 64 KiB for content, with provenance tracking (`manual`, `agent`, `import`) to distinguish human decisions from agent-generated notes. Saved text in context headers is XML-escaped and wrapped with explicit untrusted context instructions.
 
 The `install` helper uses a fixed executable path and edits existing configuration files in your home directory. Use explicit client configuration for other installations. Client-specific startup hooks and automatic context loading are not implemented.
 
 ## Implementation and checks
 
-- [SQLite storage](src/db.rs) uses parameterized queries, unique memory keys, WAL journal mode with busy timeouts for concurrent agent processes, and upserts that return the stored entry ID. SQLite is bundled with the binary; there is no database service to deploy.
-- [Context generation](src/injector.rs) groups pinned entries and recent session summaries into a prompt header.
+- [SQLite storage](src/db.rs) uses parameterized queries, unique memory keys, WAL journal mode with busy timeouts for concurrent agent processes, schema migrations for provenance tracking, and upserts that return the stored entry ID. SQLite is bundled with the binary; there is no database service to deploy.
+- [Context generation](src/injector.rs) groups pinned entries and recent session summaries into a prompt header, escaping XML delimiters and framing retrieved data with untrusted context instructions.
 - [Markdown conversion](src/sync.rs) and [MCP transport](src/mcp.rs) share the same storage implementation.
-- [Core tests](tests/memory_tests.rs) cover storage, pinned headers and Markdown conversion. [Regression tests](tests/reliability.rs) exercise explicit and discovered MCP workspaces, Unicode import, multithreaded concurrency, SQLite read/write failures and updates across database connections, using temporary directories.
+- [Core tests](tests/memory_tests.rs) cover storage, pinned headers and Markdown conversion. [Regression tests](tests/reliability.rs) exercise explicit and discovered MCP workspaces, Unicode import, multithreaded concurrency, SQLite read/write failures and updates across database connections. [Validation tests](tests/validation_and_safety.rs) verify key and content size limits, control character rejection, XML tag breakout neutralization, provenance tracking and backwards-compatible schema migration.
 
 ```bash
 cargo check --locked

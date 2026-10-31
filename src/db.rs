@@ -4,6 +4,9 @@ use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::{Path, PathBuf};
 
+pub const MAX_KEY_BYTES: usize = 256;
+pub const MAX_CONTENT_BYTES: usize = 64 * 1024; // 64 KiB
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MemoryItem {
     pub id: i64,
@@ -14,6 +17,37 @@ pub struct MemoryItem {
     pub created_at: String,
     pub updated_at: String,
     pub pinned: bool,
+    #[serde(default = "default_provenance")]
+    pub provenance: String,
+}
+
+fn default_provenance() -> String {
+    "manual".to_string()
+}
+
+pub fn validate_memory_input(key: &str, content: &str) -> std::result::Result<(), String> {
+    let key_trimmed = key.trim();
+    if key_trimmed.is_empty() {
+        return Err("Memory key cannot be empty or whitespace only".to_string());
+    }
+    if key.len() > MAX_KEY_BYTES {
+        return Err(format!(
+            "Memory key exceeds maximum size of {} bytes (got {} bytes)",
+            MAX_KEY_BYTES,
+            key.len()
+        ));
+    }
+    if key.chars().any(|c| c == '\n' || c == '\r' || c.is_control()) {
+        return Err("Memory key contains invalid newline or control characters".to_string());
+    }
+    if content.len() > MAX_CONTENT_BYTES {
+        return Err(format!(
+            "Memory content exceeds maximum size of {} bytes (got {} bytes)",
+            MAX_CONTENT_BYTES,
+            content.len()
+        ));
+    }
+    Ok(())
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -52,10 +86,17 @@ impl MemoryDb {
                 tags TEXT NOT NULL,
                 created_at TEXT NOT NULL,
                 updated_at TEXT NOT NULL,
-                pinned INTEGER NOT NULL DEFAULT 0
+                pinned INTEGER NOT NULL DEFAULT 0,
+                provenance TEXT NOT NULL DEFAULT 'manual'
             )",
             [],
         )?;
+
+        // Ensure backward compatibility by applying schema migration if needed
+        let _ = conn.execute(
+            "ALTER TABLE memories ADD COLUMN provenance TEXT NOT NULL DEFAULT 'manual'",
+            [],
+        );
 
         conn.execute(
             "CREATE TABLE IF NOT EXISTS sessions (
@@ -79,28 +120,48 @@ impl MemoryDb {
         tags: &[String],
         pinned: bool,
     ) -> Result<i64> {
+        self.save_memory_with_provenance(category, key, content, tags, pinned, "manual")
+    }
+
+    pub fn save_memory_with_provenance(
+        &mut self,
+        category: &str,
+        key: &str,
+        content: &str,
+        tags: &[String],
+        pinned: bool,
+        provenance: &str,
+    ) -> Result<i64> {
+        if let Err(e) = validate_memory_input(key, content) {
+            return Err(rusqlite::Error::ToSqlConversionFailure(Box::new(std::io::Error::new(
+                std::io::ErrorKind::InvalidInput,
+                e,
+            ))));
+        }
+
         let now = Utc::now().to_rfc3339();
         let tags_str = tags.join(",");
         let pinned_int = if pinned { 1 } else { 0 };
 
         self.conn.query_row(
-            "INSERT INTO memories (category, key, content, tags, created_at, updated_at, pinned)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?5, ?6)
+            "INSERT INTO memories (category, key, content, tags, created_at, updated_at, pinned, provenance)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?5, ?6, ?7)
              ON CONFLICT(key) DO UPDATE SET
                 category = excluded.category,
                 content = excluded.content,
                 tags = excluded.tags,
                 updated_at = excluded.updated_at,
-                pinned = excluded.pinned
+                pinned = excluded.pinned,
+                provenance = excluded.provenance
              RETURNING id",
-            params![category, key, content, tags_str, now, pinned_int],
+            params![category, key, content, tags_str, now, pinned_int, provenance],
             |row| row.get(0),
         )
     }
 
     pub fn get_pinned(&self) -> Result<Vec<MemoryItem>> {
         let mut stmt = self.conn.prepare(
-            "SELECT id, category, key, content, tags, created_at, updated_at, pinned
+            "SELECT id, category, key, content, tags, created_at, updated_at, pinned, provenance
              FROM memories WHERE pinned = 1 ORDER BY category, key",
         )?;
 
@@ -111,13 +172,13 @@ impl MemoryDb {
     pub fn list_all(&self, category_filter: Option<&str>) -> Result<Vec<MemoryItem>> {
         if let Some(cat) = category_filter {
             let mut stmt = self.conn.prepare(
-                "SELECT id, category, key, content, tags, created_at, updated_at, pinned FROM memories WHERE category = ?1 ORDER BY pinned DESC, updated_at DESC",
+                "SELECT id, category, key, content, tags, created_at, updated_at, pinned, provenance FROM memories WHERE category = ?1 ORDER BY pinned DESC, updated_at DESC",
             )?;
             let rows = stmt.query_map(params![cat], map_row_to_memory)?;
             rows.collect()
         } else {
             let mut stmt = self.conn.prepare(
-                "SELECT id, category, key, content, tags, created_at, updated_at, pinned FROM memories ORDER BY pinned DESC, category, updated_at DESC",
+                "SELECT id, category, key, content, tags, created_at, updated_at, pinned, provenance FROM memories ORDER BY pinned DESC, category, updated_at DESC",
             )?;
             let rows = stmt.query_map([], map_row_to_memory)?;
             rows.collect()
@@ -127,7 +188,7 @@ impl MemoryDb {
     pub fn search(&self, query_str: &str) -> Result<Vec<MemoryItem>> {
         let pattern = format!("%{}%", query_str);
         let mut stmt = self.conn.prepare(
-            "SELECT id, category, key, content, tags, created_at, updated_at, pinned
+            "SELECT id, category, key, content, tags, created_at, updated_at, pinned, provenance
              FROM memories
              WHERE key LIKE ?1 OR content LIKE ?1 OR tags LIKE ?1
              ORDER BY pinned DESC, updated_at DESC",
@@ -200,6 +261,10 @@ fn map_row_to_memory(row: &rusqlite::Row) -> Result<MemoryItem> {
         tags_str.split(',').map(|s| s.trim().to_string()).collect()
     };
 
+    let provenance = row
+        .get::<_, Option<String>>(8)?
+        .unwrap_or_else(|| "manual".to_string());
+
     Ok(MemoryItem {
         id: row.get(0)?,
         category: row.get(1)?,
@@ -209,5 +274,6 @@ fn map_row_to_memory(row: &rusqlite::Row) -> Result<MemoryItem> {
         created_at: row.get(5)?,
         updated_at: row.get(6)?,
         pinned: row.get::<_, i32>(7)? == 1,
+        provenance,
     })
 }

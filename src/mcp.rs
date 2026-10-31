@@ -137,7 +137,7 @@ fn handle_request(req: &JsonRpcRequest, db: &mut MemoryDb) -> Option<Value> {
                         .map(|arr| arr.iter().filter_map(|s| s.as_str().map(|s| s.to_string())).collect())
                         .unwrap_or_default();
 
-                    match db.save_memory(category, key, content, &tags, pinned) {
+                    match db.save_memory_with_provenance(category, key, content, &tags, pinned, "agent") {
                         Ok(_) => Some(json!({
                             "jsonrpc": "2.0",
                             "id": id,
@@ -177,7 +177,10 @@ fn handle_request(req: &JsonRpcRequest, db: &mut MemoryDb) -> Option<Value> {
                     } else {
                         for item in items {
                             let pin_str = if item.pinned { " [pinned]" } else { "" };
-                            out.push_str(&format!("• [{}] {}: {}{}\n", item.category, item.key, item.content, pin_str));
+                            out.push_str(&format!(
+                                "• [{}] {}: {}{} [source: {}]\n",
+                                item.category, item.key, item.content, pin_str, item.provenance
+                            ));
                         }
                     }
 
