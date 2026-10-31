@@ -94,10 +94,10 @@ The `install` helper uses a fixed executable path and edits existing configurati
 
 ## Implementation and checks
 
-- [SQLite storage](src/db.rs) uses parameterized queries, unique memory keys and upserts that return the stored entry ID. SQLite is bundled with the binary; there is no database service to deploy.
+- [SQLite storage](src/db.rs) uses parameterized queries, unique memory keys, WAL journal mode with busy timeouts for concurrent agent processes, and upserts that return the stored entry ID. SQLite is bundled with the binary; there is no database service to deploy.
 - [Context generation](src/injector.rs) groups pinned entries and recent session summaries into a prompt header.
 - [Markdown conversion](src/sync.rs) and [MCP transport](src/mcp.rs) share the same storage implementation.
-- [Core tests](tests/memory_tests.rs) cover storage, pinned headers and Markdown conversion. [Regression tests](tests/reliability.rs) exercise explicit and discovered MCP workspaces, Unicode import, SQLite read/write failures and updates across database connections, using temporary directories.
+- [Core tests](tests/memory_tests.rs) cover storage, pinned headers and Markdown conversion. [Regression tests](tests/reliability.rs) exercise explicit and discovered MCP workspaces, Unicode import, multithreaded concurrency, SQLite read/write failures and updates across database connections, using temporary directories.
 
 ```bash
 cargo check --locked
@@ -109,6 +109,14 @@ cargo build --locked --release
 
 To contribute a fix, include a reproducible case and a regression test using synthetic data. Keep database files and real conversation content out of fixtures.
 
+## Technical roadmap
+
+Realistic planned engineering milestones:
+
+1. Semantic vector search with sqlite-vec (14 hours): Integrate vector embeddings directly into the local SQLite database for hybrid keyword and cosine semantic memory retrieval.
+2. Git branch-aware memory namespaces (10 hours): Track memory state alongside the active Git branch, keeping branch-specific architectural experiments isolated while merging decisions back into main.
+3. Entry expiration and TTL pruning (6 hours): Add optional time-to-live policies for transient scratchpad notes while keeping core architectural conventions permanent.
+
 ## License
 
-MIT License.
+[MIT License](LICENSE).
