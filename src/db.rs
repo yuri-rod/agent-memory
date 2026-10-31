@@ -39,6 +39,9 @@ impl MemoryDb {
 
         let db_path = mem_dir.join("memory.sqlite");
         let conn = Connection::open(&db_path)?;
+        conn.busy_timeout(std::time::Duration::from_millis(5000))?;
+        let _ = conn.pragma_update(None, "journal_mode", "WAL");
+        let _ = conn.pragma_update(None, "synchronous", "NORMAL");
 
         conn.execute(
             "CREATE TABLE IF NOT EXISTS memories (

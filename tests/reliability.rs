@@ -148,3 +148,41 @@ fn row_conversion_errors_are_not_silently_dropped() {
     assert!(db.search("broken").is_err());
     assert!(db.get_recent_sessions(2).is_err());
 }
+
+#[test]
+fn concurrent_readers_and_writers_do_not_deadlock() {
+    use std::thread;
+
+    let workspace = TempDir::new().unwrap();
+    let workspace_path = workspace.path().to_path_buf();
+
+    {
+        let mut db = MemoryDb::open(&workspace_path).unwrap();
+        db.save_memory("config", "init", "initial value", &[], false)
+            .unwrap();
+    }
+
+    let handles: Vec<_> = (0..5)
+        .map(|i| {
+            let path = workspace_path.clone();
+            thread::spawn(move || {
+                let mut db = MemoryDb::open(&path).unwrap();
+                for j in 0..10 {
+                    let key = format!("worker_{i}_step_{j}");
+                    db.save_memory("worker", &key, "content", &[], false)
+                        .unwrap();
+                    let results = db.search("content").unwrap();
+                    assert!(!results.is_empty());
+                }
+            })
+        })
+        .collect();
+
+    for h in handles {
+        h.join().unwrap();
+    }
+
+    let db = MemoryDb::open(&workspace_path).unwrap();
+    let all = db.list_all(Some("worker")).unwrap();
+    assert_eq!(all.len(), 50);
+}
