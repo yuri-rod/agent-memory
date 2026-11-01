@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased
+
+- Return MCP tool failures with `isError` inside the tool result for memory saves
+  and session summaries.
+- Preserve colons in exported Markdown keys during import, keeping distinct keys
+  such as `api` and `api:v2` from overwriting one another.
+
 ## 0.1.2 - 2026-10-28
 
 - Collect SQLite query results with the standard iterator API, preserving row order

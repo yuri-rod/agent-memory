@@ -8,7 +8,12 @@ use agent_memory::sync::{export_to_markdown, sync_from_markdown};
 use rusqlite::Connection;
 use tempfile::TempDir;
 
-fn save_over_mcp(cwd: &Path, directory: Option<&Path>) {
+fn call_over_mcp(
+    cwd: &Path,
+    directory: Option<&Path>,
+    tool: &str,
+    arguments: serde_json::Value,
+) -> serde_json::Value {
     let mut command = Command::new(env!("CARGO_BIN_EXE_agent-memory"));
     command.current_dir(cwd);
     if let Some(directory) = directory {
@@ -21,20 +26,92 @@ fn save_over_mcp(cwd: &Path, directory: Option<&Path>) {
         .stderr(Stdio::piped())
         .spawn()
         .unwrap();
-    child.stdin.take().unwrap().write_all(
-        b"{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"tools/call\",\"params\":{\"name\":\"save_memory\",\"arguments\":{\"category\":\"decision\",\"key\":\"storage\",\"content\":\"Use SQLite\"}}}\n",
-    ).unwrap();
+    writeln!(
+        child.stdin.take().unwrap(),
+        "{}",
+        serde_json::json!({
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "tools/call",
+            "params": { "name": tool, "arguments": arguments }
+        })
+    )
+    .unwrap();
     let output = child.wait_with_output().unwrap();
     assert!(
         output.status.success(),
         "{}",
         String::from_utf8_lossy(&output.stderr)
     );
-    let response: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+    serde_json::from_slice(&output.stdout).unwrap()
+}
+
+fn save_over_mcp(cwd: &Path, directory: Option<&Path>) {
+    let response = call_over_mcp(
+        cwd,
+        directory,
+        "save_memory",
+        serde_json::json!({ "category": "decision", "key": "storage", "content": "Use SQLite" }),
+    );
+    assert_ne!(response["result"]["isError"], true);
     assert!(response["result"]["content"][0]["text"]
         .as_str()
         .unwrap()
         .contains("Saved memory"));
+}
+
+#[test]
+fn mcp_save_memory_errors_are_tool_results() {
+    let workspace = TempDir::new().unwrap();
+    for (key, content) in [
+        (String::new(), "Use SQLite".to_string()),
+        ("k".repeat(257), "Use SQLite".to_string()),
+        ("storage".to_string(), "x".repeat(65_537)),
+    ] {
+        let response = call_over_mcp(
+            workspace.path(),
+            None,
+            "save_memory",
+            serde_json::json!({ "category": "decision", "key": key, "content": content }),
+        );
+        assert_eq!(response["jsonrpc"], "2.0");
+        assert_eq!(response["id"], 1);
+        assert_eq!(response["result"]["isError"], true);
+        assert!(response.get("isError").is_none());
+        assert!(response.get("error").is_none());
+        assert_eq!(response["result"]["content"][0]["type"], "text");
+        assert!(response["result"]["content"][0]["text"]
+            .as_str()
+            .unwrap()
+            .contains("Failed to save memory"));
+    }
+    let db = MemoryDb::open(workspace.path()).unwrap();
+    assert!(db.list_all(None).unwrap().is_empty());
+}
+
+#[test]
+fn mcp_session_summary_errors_are_tool_results() {
+    let workspace = TempDir::new().unwrap();
+    for summary in [String::new(), "s".repeat(4097)] {
+        let response = call_over_mcp(
+            workspace.path(),
+            None,
+            "record_session_summary",
+            serde_json::json!({ "agent_name": "test", "summary": summary }),
+        );
+        assert_eq!(response["jsonrpc"], "2.0");
+        assert_eq!(response["id"], 1);
+        assert_eq!(response["result"]["isError"], true);
+        assert!(response.get("isError").is_none());
+        assert!(response.get("error").is_none());
+        assert_eq!(response["result"]["content"][0]["type"], "text");
+        assert!(response["result"]["content"][0]["text"]
+            .as_str()
+            .unwrap()
+            .contains("Failed to record session"));
+    }
+    let db = MemoryDb::open(workspace.path()).unwrap();
+    assert!(db.get_recent_sessions(2).unwrap().is_empty());
 }
 
 #[test]

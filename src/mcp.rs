@@ -238,8 +238,10 @@ fn handle_request(req: &JsonRpcRequest, db: &mut MemoryDb) -> Option<Value> {
                         Err(e) => Some(json!({
                             "jsonrpc": "2.0",
                             "id": id,
-                            "isError": true,
-                            "result": { "content": [{ "type": "text", "text": format!("Failed to save memory: {}", e) }] }
+                            "result": {
+                                "isError": true,
+                                "content": [{ "type": "text", "text": format!("Failed to save memory: {}", e) }]
+                            }
                         })),
                     }
                 }
@@ -311,8 +313,10 @@ fn handle_request(req: &JsonRpcRequest, db: &mut MemoryDb) -> Option<Value> {
                         Err(e) => Some(json!({
                             "jsonrpc": "2.0",
                             "id": id,
-                            "isError": true,
-                            "result": { "content": [{ "type": "text", "text": format!("Failed to record session: {}", e) }] }
+                            "result": {
+                                "isError": true,
+                                "content": [{ "type": "text", "text": format!("Failed to record session: {}", e) }]
+                            }
                         })),
                     }
                 }

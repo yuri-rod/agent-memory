@@ -36,12 +36,13 @@ pub fn sync_from_markdown(workspace: &Path, db: &mut MemoryDb) -> io::Result<usi
                 continue;
             }
 
-            let (key, val) = if let Some(colon_pos) = item_text.find(':') {
-                let k = item_text[..colon_pos]
-                    .trim()
-                    .replace("**", "")
-                    .replace('`', "");
-                let v = item_text[colon_pos + 1..].trim().to_string();
+            let key_value = item_text
+                .strip_prefix("**")
+                .and_then(|text| text.split_once("**:"))
+                .or_else(|| item_text.split_once(':'));
+            let (key, val) = if let Some((key, val)) = key_value {
+                let k = key.trim().replace("**", "").replace('`', "");
+                let v = val.trim().to_string();
                 (k, v)
             } else {
                 let k = format!("note_{}", count + 1);

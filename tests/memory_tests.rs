@@ -60,6 +60,8 @@ fn test_markdown_sync() {
 ## Conventions
 - **no_em_dash**: Never use Unicode code point U+2014 anywhere.
 - **commit_style**: Use pt-BR conventional commits.
+- plain_key: Keep **bold**: text intact.
+- `legacy_key`: Preserve values: with colons.
 
 ## Architectural Decisions
 - **db_engine**: SQLite via bundled rusqlite.
@@ -68,10 +70,16 @@ fn test_markdown_sync() {
 
     let mut db = MemoryDb::open(workspace).unwrap();
     let count = sync_from_markdown(workspace, &mut db).unwrap();
-    assert_eq!(count, 3);
+    assert_eq!(count, 5);
 
     let items = db.list_all(None).unwrap();
-    assert_eq!(items.len(), 3);
+    assert_eq!(items.len(), 5);
+    for (key, content) in [
+        ("plain_key", "Keep **bold**: text intact."),
+        ("legacy_key", "Preserve values: with colons."),
+    ] {
+        assert_eq!(items.iter().find(|item| item.key == key).unwrap().content, content);
+    }
 
     db.save_memory("gotcha", "macos_launchd", "Avoid KeepAlive without error check", &[], true).unwrap();
     export_to_markdown(workspace, &db).unwrap();
@@ -79,4 +87,29 @@ fn test_markdown_sync() {
     let updated_md = fs::read_to_string(workspace.join("MEMORY.md")).unwrap();
     assert!(updated_md.contains("macos_launchd"));
     assert!(updated_md.contains("db_engine"));
+}
+
+#[test]
+fn test_markdown_round_trip_preserves_colons_in_keys() {
+    let temp = TempDir::new().unwrap();
+    let mut db = MemoryDb::open(temp.path()).unwrap();
+    let entries = [
+        ("api", "Use GraphQL"),
+        ("api:v2", "Use REST: JSON over HTTP"),
+        ("café:v2:routes", "Use UTF-8"),
+    ];
+    for (key, content) in entries {
+        db.save_memory("decision", key, content, &[], true).unwrap();
+    }
+    export_to_markdown(temp.path(), &db).unwrap();
+
+    for _ in 0..2 {
+        assert_eq!(sync_from_markdown(temp.path(), &mut db).unwrap(), 3);
+        let items = db.list_all(None).unwrap();
+        assert_eq!(items.len(), 3);
+        for (key, content) in entries {
+            let item = items.iter().find(|item| item.key == key).unwrap();
+            assert_eq!(item.content, content, "content changed for {key}");
+        }
+    }
 }
